@@ -9,13 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
 ```{r carga_libraries, echo = FALSE, message=FALSE, warning=FALSE}
 library(readr)
 library(dplyr)
@@ -23,7 +16,7 @@ library(tidyverse)
 library(knitr)
 #se omiten mensajes de carga en el documento mediante message=FALSE
 ```
-
+1. Obtencion y carga de datos
 ```{r carga_datos, echo = FALSE,warning=FALSE }
 epa_http <- read_table("./epa-http.csv",col_names = FALSE, show_col_types = F)
 colnames(epa_http) <- c("origen", "fecha", "tipo", "URL", "protocolo", "responsecode", "bytes")
@@ -63,12 +56,66 @@ epa_http$bytes <- as.numeric(epa_http$bytes)
 
 ```
 
-## Including Plots
+```{r Analisis de datos, echo=FALSE}
+  # Punto 5: Analizar los distintos tipos de peticiones. 
+frecuencia_tipos <- epa_http %>%
+  filter(tipo %in% c("GET", "POST", "PUT", "DELETE")) %>%
+  count(tipo, sort = TRUE)
 
-You can also embed plots, for example:
+frecuencia_tipos
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+
+## ---- grafica_metodos_por_rangos, echo=TRUE, warning=FALSE, message=FALSE ----
+
+# 1. Extraer día, hora, minuto y segundo del timestamp
+# Formato: [30:00:19:45]
+epa_http <- epa_http %>%
+  mutate(
+    timestamp = str_replace_all(fecha, "\\[|\\]", ""),  # quitar corchetes
+    dia   = str_extract(timestamp, "^[0-9]+"),
+    hora  = str_extract(timestamp, "(?<=:)[0-9]+(?=:)"),
+    segundo = str_extract(timestamp, "[0-9]+$"),
+
+    dia = as.integer(dia),
+    hora = as.integer(hora)
+  )
+
+# 2. Crear rangos horarios (ejemplo: 0–5, 6–11, 12–17, 18–23)
+epa_http <- epa_http %>%
+  mutate(
+    rango_hora = case_when(
+      hora >= 0  & hora < 6  ~ "00-05",
+      hora >= 6  & hora < 12 ~ "06-11",
+      hora >= 12 & hora < 18 ~ "12-17",
+      hora >= 18 & hora <= 23 ~ "18-23",
+      TRUE ~ "otro"
+    )
+  )
+
+# 3. Filtrar métodos HTTP relevantes
+metodos_http <- c("GET", "POST", "PUT", "DELETE")
+
+epa_http <- epa_http %>%
+  mutate(tipo = str_replace_all(tipo, '"', '')) %>%
+  filter(tipo %in% metodos_http)
+
+# 4. Agrupar por día, rango horario y método
+resumen <- epa_http %>%
+  count(dia, rango_hora, tipo)
+
+# 5. Gráfica
+ggplot(resumen, aes(x = rango_hora, y = n, fill = tipo)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ dia, ncol = 1) +
+  labs(
+    title = "Cantidad de métodos HTTP por rangos horarios y por día",
+    x = "Rango horario",
+    y = "Cantidad de peticiones",
+    fill = "Método HTTP"
+  ) +
+  theme_minimal()
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+
