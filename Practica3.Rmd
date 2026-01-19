@@ -16,22 +16,13 @@ library(tidyverse)
 library(knitr)
 #se omiten mensajes de carga en el documento mediante message=FALSE
 ```
-
+1. Obtencion y carga de datos
 ```{r carga_datos, echo = FALSE,warning=FALSE }
 epa_http <- read_table("./epa-http.csv",col_names = FALSE, show_col_types = F)
 colnames(epa_http) <- c("origen", "fecha", "tipo", "URL", "protocolo", "responsecode", "bytes")
 #se omiten warnings de columnas esperadas en ciertos datos, ya que no son relevantes. 
 ```
 
-```{r carga_libraries, echo = FALSE, message=FALSE, warning=FALSE}
-library(readr)
-library(dplyr)
-library(tidyverse)
-library(knitr)
-#se omiten mensajes de carga en el documento mediante message=FALSE
-```
 
-```{r Punto 2 }
 
-```
 
