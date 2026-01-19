@@ -44,6 +44,59 @@ frecuencia_tipos <- epa_http %>%
   count(tipo, sort = TRUE)
 
 frecuencia_tipos
+
+
+## ---- grafica_metodos_por_rangos, echo=TRUE, warning=FALSE, message=FALSE ----
+
+# 1. Extraer día, hora, minuto y segundo del timestamp
+# Formato: [30:00:19:45]
+epa_http <- epa_http %>%
+  mutate(
+    timestamp = str_replace_all(fecha, "\\[|\\]", ""),  # quitar corchetes
+    dia   = str_extract(timestamp, "^[0-9]+"),
+    hora  = str_extract(timestamp, "(?<=:)[0-9]+(?=:)"),
+    segundo = str_extract(timestamp, "[0-9]+$"),
+
+    dia = as.integer(dia),
+    hora = as.integer(hora)
+  )
+
+# 2. Crear rangos horarios (ejemplo: 0–5, 6–11, 12–17, 18–23)
+epa_http <- epa_http %>%
+  mutate(
+    rango_hora = case_when(
+      hora >= 0  & hora < 6  ~ "00-05",
+      hora >= 6  & hora < 12 ~ "06-11",
+      hora >= 12 & hora < 18 ~ "12-17",
+      hora >= 18 & hora <= 23 ~ "18-23",
+      TRUE ~ "otro"
+    )
+  )
+
+# 3. Filtrar métodos HTTP relevantes
+metodos_http <- c("GET", "POST", "PUT", "DELETE")
+
+epa_http <- epa_http %>%
+  mutate(tipo = str_replace_all(tipo, '"', '')) %>%
+  filter(tipo %in% metodos_http)
+
+# 4. Agrupar por día, rango horario y método
+resumen <- epa_http %>%
+  count(dia, rango_hora, tipo)
+
+# 5. Gráfica
+ggplot(resumen, aes(x = rango_hora, y = n, fill = tipo)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ dia, ncol = 1) +
+  labs(
+    title = "Cantidad de métodos HTTP por rangos horarios y por día",
+    x = "Rango horario",
+    y = "Cantidad de peticiones",
+    fill = "Método HTTP"
+  ) +
+  theme_minimal()
 ```
+
+
 
 
