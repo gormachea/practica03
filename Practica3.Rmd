@@ -23,6 +23,27 @@ colnames(epa_http) <- c("origen", "fecha", "tipo", "URL", "protocolo", "response
 #se omiten warnings de columnas esperadas en ciertos datos, ya que no son relevantes. 
 ```
 
+```{r limpieza_comillas, echo = FALSE,warning=FALSE }
+epa_http$tipo <- gsub('"', '', epa_http$tipo)
+epa_http$protocolo <- gsub('"', '', epa_http$protocolo)
+#En la importación de datos notamos que los datos de 2 columnas (tipo, procotolo) tomaron las comillas dobles como texto por lo que debemos quitarlas para tener limpios los datos.
+```
 
+```{r limpieza_no_200, echo = FALSE,warning=FALSE }
+epa_http$bytes <- gsub('-', 0, epa_http$bytes)
+epa_http$bytes[epa_http$bytes == ""] <- 0
+epa_http[is.na(epa_http)] <- '0'
+#En la importación de datos notamos que en la cantidad de bytes transferidos, algunas peticiones tuvieron una respuesta distinta a 200 por lo que no hubo transferencia de datos a lo que se marcó como - o vacío, para poder trabajarlo como numérico debemos limpiar dichos datos no numéricos para que todo coincida.
+```
+
+
+```{r Analisis de datos, echo=FALSE}
+  # Punto 5: Analizar los distintos tipos de peticiones. 
+frecuencia_tipos <- epa_http %>%
+  filter(tipo %in% c("GET", "POST", "PUT", "DELETE")) %>%
+  count(tipo, sort = TRUE)
+
+frecuencia_tipos
+```
 
 
