@@ -95,7 +95,11 @@ ggplot(resumen, aes(x = rango_hora, y = n, fill = tipo)) +
     fill = "Método HTTP"
   ) +
   theme_minimal()
+
+
+
 ```
+
 
 
 
