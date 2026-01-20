@@ -14,15 +14,41 @@ library(readr)
 library(dplyr)
 library(tidyverse)
 library(knitr)
+library(ggplot2)
 #se omiten mensajes de carga en el documento mediante message=FALSE
 ```
-1. Obtencion y carga de datos
-```{r carga_datos, echo = FALSE,warning=FALSE }
+## 1. Obtencion y carga de datos
+```{r carga_datos, warning=FALSE }
 epa_http <- read_table("./epa-http.csv",col_names = FALSE, show_col_types = F)
 colnames(epa_http) <- c("origen", "fecha", "tipo", "URL", "protocolo", "responsecode", "bytes")
 #se omiten warnings de columnas esperadas en ciertos datos, ya que no son relevantes. 
 ```
 
+## 2. Descripcion de los datos analizados
+
+```{r Descripcion_datos, echo = FALSE,warning=FALSE }
+descripcion_datos <- data.frame(
+  Campo = c("origen", "dias", "horas", "minutos", "segundos", 
+            "tipo", "URL", "protocolo", "responsecode", "bytes"),
+  Descripcion = c(
+    "IP o identificador del cliente",
+    "Día del mes extraído del timestamp",
+    "Hora del día (0–23)",
+    "Minutos (0–59)",
+    "Segundos (0–59)",
+    "Método HTTP utilizado (GET, POST, PUT, DELETE)",
+    "Recurso solicitado por el cliente",
+    "Versión del protocolo HTTP",
+    "Código de respuesta del servidor",
+    "Bytes transferidos en la respuesta"
+  )
+)
+
+kable(descripcion_datos, caption = "Descripción de los campos del dataset")
+```
+
+
+## 3. Limpieza de datos
 ```{r limpieza_comillas, echo = TRUE,warning=FALSE }
 epa_http$tipo <- gsub('"', '', epa_http$tipo)
 epa_http$protocolo <- gsub('"', '', epa_http$protocolo)
@@ -56,66 +82,144 @@ epa_http$bytes <- as.numeric(epa_http$bytes)
 
 ```
 
+## 4. Exploracion de datos
+```{r exploracion_datos, echo = FALSE ,warning=FALSE }
+epa_http <- epa_http %>%
+  mutate(
+    responsecode = as.numeric(responsecode),
+    tipo_error = case_when(
+      responsecode >= 400 & responsecode < 500 ~ "Error 4xx",
+      responsecode >= 500 & responsecode < 600 ~ "Error 5xx",
+      TRUE ~ "Sin error"
+    )
+  )
+
+
+usuarios_error <- epa_http %>%
+  filter(tipo_error != "Sin error") %>%
+  distinct(origen)
+
+usuarios_sin_error <- epa_http %>%
+  filter(tipo_error == "Sin error") %>%
+  distinct(origen)
+
+conteo_usuarios <- tibble(
+  Categoria = c("Usuarios con errores", "Usuarios sin errores"),
+  Usuarios_unicos = c(nrow(usuarios_error), nrow(usuarios_sin_error))
+)
+
+kable(conteo_usuarios, caption = "Usuarios únicos con y sin errores")
+
+usuarios_por_error <- epa_http %>%
+  filter(tipo_error != "Sin error") %>%
+  group_by(tipo_error) %>%
+  summarise(usuarios_unicos = n_distinct(origen)) %>%
+  arrange(desc(usuarios_unicos))
+
+kable(usuarios_por_error, caption = "Usuarios únicos por tipo de error (4xx y 5xx)")
+tipos_error <- epa_http %>%
+  filter(tipo_error != "Sin error") %>%
+  count(responsecode, sort = TRUE)
+
+kable(tipos_error, caption = "Tipos de errores HTTP presentes en la muestra")
+
+
+```
+## 5. Analisis de datos
 ```{r Analisis de datos, echo=FALSE}
-  # Punto 5: Analizar los distintos tipos de peticiones. 
 frecuencia_tipos <- epa_http %>%
   filter(tipo %in% c("GET", "POST", "PUT", "DELETE")) %>%
   count(tipo, sort = TRUE)
 
-frecuencia_tipos
+kable(
+  frecuencia_tipos,
+  caption = "Frecuencia de métodos HTTP (GET, POST, PUT, DELETE)"
+)
+extensiones_imagen <- c(".jpg", ".jpeg", ".png", ".gif", ".bmp")
+
+frecuencia_imagenes <- epa_http %>%
+  filter(tipo %in% c("GET", "POST", "PUT", "DELETE")) %>%
+  filter(str_detect(tolower(URL), paste(extensiones_imagen, collapse = "|"))) %>%
+  count(tipo, sort = TRUE)
+
+kable(
+  frecuencia_imagenes,
+  caption = "Frecuencia de métodos HTTP de recursos de tipo imagen"
+)
 
 
-## ---- grafica_metodos_por_rangos, echo=TRUE, warning=FALSE, message=FALSE ----
+```
 
-# 1. Extraer día, hora, minuto y segundo del timestamp
-# Formato: [30:00:19:45]
+## 6. Visualizacion de resultados
+
+```{r Visualizar_resultados, echo=FALSE}
 epa_http <- epa_http %>%
   mutate(
-    timestamp = str_replace_all(fecha, "\\[|\\]", ""),  # quitar corchetes
-    dia   = str_extract(timestamp, "^[0-9]+"),
-    hora  = str_extract(timestamp, "(?<=:)[0-9]+(?=:)"),
-    segundo = str_extract(timestamp, "[0-9]+$"),
-
-    dia = as.integer(dia),
-    hora = as.integer(hora)
+    rango_hora = cut(
+      horas,
+      breaks = c(0, 6, 12, 18, 24),
+      labels = c("00-06", "06-12", "12-18", "18-24"),
+      include.lowest = TRUE,
+      right = FALSE
+    )
   )
+conteo_metodos <- epa_http %>%
+  filter(tipo %in% c("GET", "POST", "PUT", "DELETE")) %>% 
+  group_by(dias, rango_hora, tipo) %>%
+  summarise(conteo = n(), .groups = "drop")
 
-# 2. Crear rangos horarios (ejemplo: 0–5, 6–11, 12–17, 18–23)
+#Grafico 1: Cantidad de metodos HTTP de acuerdo al rango de horarios por ambos dias
+
+ggplot(conteo_metodos, aes(x = rango_hora, y = conteo, fill = tipo)) +
+  geom_col(position = "stack") +
+  labs(
+    title = "Cantidad de métodos HTTP por rangos horarios",
+    x = "Rango horario",
+    y = "Cantidad de solicitudes",
+    fill = "Método HTTP"
+  ) +
+  theme_minimal(base_size = 14)
+
+#Grafico 2: Trafico por hora que nos sirve para identificar las horas pico. 
+
+lineas_horas <- epa_http %>%
+  count(dias, horas)
+
+ggplot(lineas_horas, aes(x = horas, y = n, color = factor(dias))) +
+  geom_line(linewidth = 1.2) +
+  geom_point() +
+  labs(
+    title = "Tráfico por hora",
+    x = "Hora del día",
+    y = "Cantidad de solicitudes",
+    color = "Día"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+## 7. Grafico para visualizar el numero de peticiones servidas a lo largo del tiempo
+```{r Peticiones_tiempo, echo = FALSE ,warning=FALSE }
 epa_http <- epa_http %>%
   mutate(
-    rango_hora = case_when(
-      hora >= 0  & hora < 6  ~ "00-05",
-      hora >= 6  & hora < 12 ~ "06-11",
-      hora >= 12 & hora < 18 ~ "12-17",
-      hora >= 18 & hora <= 23 ~ "18-23",
-      TRUE ~ "otro"
+    datetime = as.POSIXct(
+      sprintf("1995-01-%02d %02d:%02d:%02d", dias, horas, minutos, segundos),
+      format = "%Y-%m-%d %H:%M:%S",
+      tz = "UTC"
     )
   )
 
-# 3. Filtrar métodos HTTP relevantes
-metodos_http <- c("GET", "POST", "PUT", "DELETE")
+peticiones_tiempo <- epa_http %>%
+  count(datetime)
 
-epa_http <- epa_http %>%
-  mutate(tipo = str_replace_all(tipo, '"', '')) %>%
-  filter(tipo %in% metodos_http)
-
-# 4. Agrupar por día, rango horario y método
-resumen <- epa_http %>%
-  count(dia, rango_hora, tipo)
-
-# 5. Gráfica
-ggplot(resumen, aes(x = rango_hora, y = n, fill = tipo)) +
-  geom_col(position = "dodge") +
-  facet_wrap(~ dia, ncol = 1) +
+ggplot(peticiones_tiempo, aes(x = datetime, y = n)) +
+  geom_line(color = "steelblue", linewidth = 1) +
   labs(
-    title = "Cantidad de métodos HTTP por rangos horarios y por día",
-    x = "Rango horario",
-    y = "Cantidad de peticiones",
-    fill = "Método HTTP"
+    title = "Número de peticiones servidas a lo largo del tiempo",
+    x = "Tiempo",
+    y = "Cantidad de peticiones"
   ) +
-  theme_minimal()
-
-
+  theme_minimal(base_size = 14)
 
 ```
 
