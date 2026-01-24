@@ -17,6 +17,7 @@ library(knitr)
 library(ggplot2)
 library(mltools)
 library(data.table)
+library(ggplot2)
 #se omiten mensajes de carga en el documento mediante message=FALSE
 ```
 ## 1. Obtencion y carga de datos
@@ -225,8 +226,8 @@ ggplot(peticiones_tiempo, aes(x = datetime, y = n)) +
 
 ```
 
-## 8. Definimos los clústeres
-```{r Peticiones_tiempo, echo = FALSE ,warning=FALSE }
+## 8. Definimos los clústeres y encontramos a cual de ellos pertenece cada peticion o es más cercano.
+```{r encontrar_clusteres, echo = FALSE ,warning=FALSE }
 num_clusters <- 2
 epa_http_numeric <- epa_http[, -c(1, 6, 7, 8, 11, 13)]
 epa_http_one_hot <- one_hot(as.data.table(epa_http_numeric), sparsifyNAs = TRUE)
@@ -236,7 +237,16 @@ num_clusters <- 3
 epa_http_one_hot <- one_hot(as.data.table(epa_http_numeric), sparsifyNAs = TRUE)
 results <- kmeans(epa_http_one_hot, centers = num_clusters, nstart = 25)
 
-epa_http$cluster <- results$cluster
+
+```
+
+## 9. Creamos un gráfico que represente las peticiones que tenemos de acuerdo al clúster definido previamente.
+```{r creacion_graficos, echo = FALSE ,warning=FALSE }
+epa_http$cluster <- as.factor(results$cluster)
+
+ggplot2::ggplot(epa_http,aes(x = datetime, bytes, colour = cluster))+
+  geom_point(alpha = 0.2) + 
+  ggtitle(paste("EPA Sever logs K-means analysis with", num_clusters,"clusters"))
 ```
 
 
